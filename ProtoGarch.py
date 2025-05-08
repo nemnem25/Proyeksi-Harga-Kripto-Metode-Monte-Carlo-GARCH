@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 # Konfigurasi halaman Streamlit
-st.set_page_config(page_title="Simulasi Monte Carlo Proyeksi Harga Kripto", layout="centered")
+st.set_page_config(page_title="Simulasi Monte Carlo Proyeksi Harga Kripto", layout="wide")
 
 # Menampilkan waktu
 wib = pytz.timezone("Asia/Jakarta")
@@ -58,7 +58,7 @@ try:
     current_price = df["Close"].iloc[-1]
 
     # Tampilkan informasi harga terakhir
-    st.markdown(f"**Harga penutupan terakhir ({ticker_input}): US${current_price:,.2f}**")
+    st.markdown(f"### **Harga Penutupan Terakhir ({ticker_input}): US${current_price:,.2f}**")
 
     # Tetapkan random seed
     if "random_seed" not in st.session_state:
@@ -78,7 +78,7 @@ try:
 
     # Tampilkan hasil simulasi
     for days, results in st.session_state.simulation_results.items():
-        st.subheader(f"Proyeksi Harga {ticker_input} untuk {days} Hari ke Depan")
+        st.header(f"📅 Proyeksi Harga {ticker_input} untuk {days} Hari ke Depan")
 
         # Statistik hasil simulasi
         mean_price = np.mean(results)
@@ -87,20 +87,46 @@ try:
         skewness = pd.Series(results).skew()
         lower_bound = np.percentile(results, 5)
         upper_bound = np.percentile(results, 95)
+        prob_above_mean = (results > mean_price).mean() * 100
 
-        st.write(f"📈 **Rata-rata harga:** US${mean_price:,.2f}")
-        st.write(f"📉 **Median harga:** US${median_price:,.2f}")
-        st.write(f"📊 **Standar deviasi:** US${std_dev:,.2f}")
-        st.write(f"➡️ **Rentang (5%-95%):** US${lower_bound:,.2f} - US${upper_bound:,.2f}")
-        st.write(f"🔄 **Skewness:** {skewness:.2f}")
+        # Distribusi kumulatif untuk tiga rentang harga tertinggi
+        sorted_results = np.sort(results)  # Urutkan hasil simulasi
+        top_3_ranges = sorted_results[-3:]  # Ambil tiga rentang harga tertinggi
+        prob_top_3 = (results >= top_3_ranges[0]).mean() * 100  # Probabilitas kumulatif
 
-        # Visualisasi histogram
-        fig, ax = plt.subplots()
-        ax.hist(results, bins=50, color="blue", alpha=0.7)
-        ax.set_title(f"Distribusi Harga Simulasi ({days} Hari)")
-        ax.set_xlabel("Harga")
-        ax.set_ylabel("Frekuensi")
-        st.pyplot(fig)
+        # Layout menggunakan kolom
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            # Visualisasi histogram
+            fig, ax = plt.subplots()
+            ax.hist(results, bins=50, color="blue", alpha=0.7)
+            ax.set_title(f"Distribusi Harga Simulasi ({days} Hari)")
+            ax.set_xlabel("Harga")
+            ax.set_ylabel("Frekuensi")
+            st.pyplot(fig)
+
+        with col2:
+            # Menampilkan statistik
+            st.markdown("### 📊 Statistik Simulasi")
+            st.write(f"**Rata-rata harga:** US${mean_price:,.2f}")
+            st.write(f"**Median harga:** US${median_price:,.2f}")
+            st.write(f"**Standar deviasi:** US${std_dev:,.2f}")
+            st.write(f"**Rentang (5%-95%):** US${lower_bound:,.2f} - US${upper_bound:,.2f}")
+            st.write(f"**Skewness:** {skewness:.2f}")
+            st.write(f"**Peluang di atas rata-rata:** {prob_above_mean:.2f}%")
+            st.write(f"**Peluang di tiga rentang tertinggi:** {prob_top_3:.2f}%")
+
+        # Kesimpulan pendek untuk media sosial
+        social_summary = (
+            f"Berdasarkan simulasi Monte Carlo, ada peluang sebesar {prob_top_3:.1f}% "
+            f"{ticker_input.split('-')[0]} bergerak di kisaran US${lower_bound:,.0f} - US${upper_bound:,.0f} "
+            f"dalam {days} hari ke depan, dengan peluang {prob_above_mean:.1f}% berada di atas rata-rata logaritmik "
+            f"US${mean_price:,.0f}."
+        )
+
+        st.markdown("### 📢 Kesimpulan untuk Media Sosial")
+        st.text_area("Salin Kesimpulan", value=social_summary, height=100, key=f"summary_{days}")
 
 except Exception as e:
     st.error(f"Terjadi kesalahan: {e}")
