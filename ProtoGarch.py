@@ -2,152 +2,176 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import requests
 import pytz
-import matplotlib.pyplot as plt
-from arch import arch_model  # Untuk model GARCH
-import time  # Untuk loader
+import time
+import requests
+from arch import arch_model
 
+# ————————————————————
+# Utility formatting angka Indonesia 
+# ————————————————————
 
+def format_angka_indonesia(val) -> str:
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    if abs(val) < 1:
+        s = f"{val:,.8f}"
+    else:
+        s = f"{val:,.0f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+def format_persen_indonesia(val) -> str:
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    s = f"{val:.1f}"
+    return s.replace(".", ",") + "%"
+
+# ————————————————————
 # Konfigurasi halaman Streamlit
-st.set_page_config(page_title="Simulasi Monte Carlo + GARCH untuk Proyeksi Harga Kripto", layout="wide")
+# ————————————————————
 
-# Menampilkan waktu
+st.set_page_config(page_title="Proyeksi Harga Kripto Metode Monte Carlo (GARCH)", layout="centered")
+
+# Tampilkan waktu realtime di atas
 wib = pytz.timezone("Asia/Jakarta")
+waktu_sekarang = datetime.now(wib).strftime("%A, %d %B %Y")
+st.markdown(f"""
+<div style='background-color: #5B5B5B; padding: 8px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 16px;'>
+⏰ {waktu_sekarang}
+</div>
+""", unsafe_allow_html=True)
+
+st.title("Proyeksi Harga Kripto Metode Monte Carlo (GARCH)")
 st.markdown(
-    f"<div style='text-align: right; font-size: 14px;'><strong>🕒 {datetime.now(wib).strftime('%A, %d %B %Y')}</strong></div>",
-    unsafe_allow_html=True,
+    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan, menggunakan metode Monte Carlo dengan volatilitas dinamis dari model GARCH._",
+    unsafe_allow_html=True
 )
 
-st.title("🪙 Simulasi Monte Carlo + GARCH untuk Proyeksi Harga Kripto")
-st.markdown(
-    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan menggunakan metode kombinasi Monte Carlo dan GARCH._"
-)
+# ————————————————————
+# CSS global untuk styling hasil
+# ————————————————————
 
-# Mapping simbol ke ID CoinGecko
-coingecko_map = {"BTC-USD": "bitcoin", "ETH-USD": "ethereum", "BNB-USD": "binancecoin"}  # Tambahkan sesuai kebutuhan
+st.markdown("""
+    <style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th {
+        background-color: #5B5B5B;
+        font-weight: bold;
+        color: white;
+        padding: 6px;
+        text-align: left;
+        border: 1px solid white;
+    }
+    td {
+        border: 1px solid white;
+        padding: 6px;
+        text-align: left;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Input pengguna
+# —————————————————————————
+# Daftar ticker dan mapping ke CoinGecko
+# —————————————————————————
+
+coingecko_map = {
+    "BTC-USD":"bitcoin", "ETH-USD":"ethereum", "BNB-USD":"binancecoin", "USDT-USD":"tether", "SOL-USD":"solana"
+}
+
 ticker_input = st.selectbox("Pilih simbol kripto:", list(coingecko_map.keys()))
-coin_id = coingecko_map[ticker_input]
+if not ticker_input:
+    st.stop()
 
-# Ambil data historis (gunakan cache untuk efisiensi)
-@st.cache_data
-def get_historical_data(coin_id):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {"vs_currency": "usd", "days": "365"}
-    resp = requests.get(url, params=params)
-    resp.raise_for_status()
-    data = resp.json()["prices"]
-    dates = [datetime.fromtimestamp(p[0] / 1000).date() for p in data]
-    prices = [p[1] for p in data]
-    return pd.DataFrame({"Date": dates, "Close": prices}).set_index("Date")
+# ————————————————————
+# Logika simulasi dengan GARCH
+# ————————————————————
 
 try:
-    # Ambil data historis
-    df = get_historical_data(coin_id)
+    coin_id = coingecko_map[ticker_input]
 
-    # Validasi data historis
+    resp = requests.get(
+        f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+        params={"vs_currency":"usd","days":"365"}
+    )
+    resp.raise_for_status()
+    prices = resp.json()["prices"]
+    dates = [datetime.fromtimestamp(p[0]/1000).date() for p in prices]
+    closes = [p[1] for p in prices]
+
+    df = pd.DataFrame({"Date":dates, "Close":closes}).set_index("Date")
     if len(df) < 2:
         st.warning("Data historis tidak mencukupi untuk simulasi.")
         st.stop()
 
-    # Hitung log-return
-    log_ret = np.log(df["Close"] / df["Close"].shift(1)).dropna()
-    mu = log_ret.mean()  # Rata-rata log-return
+    log_ret = np.log(df["Close"]/df["Close"].shift(1)).dropna()
 
-    # Harga penutupan terakhir
-    current_price = df["Close"].iloc[-1]
-
-    # Tampilkan informasi harga terakhir
-    st.markdown(f"### **Harga Penutupan Terakhir ({ticker_input}): US${current_price:,.2f}**")
-
-    # Loader 3 detik
-    with st.spinner("Menghitung volatilitas dengan model GARCH..."):
-        time.sleep(3)
-
-    # Model GARCH untuk estimasi volatilitas dinamis
-    garch_model = arch_model(log_ret, vol='Garch', p=1, q=1)
+    # Model GARCH untuk menghitung volatilitas
+    st.spinner("Menghitung volatilitas dinamis dengan model GARCH...")
+    garch_model = arch_model(log_ret, vol="Garch", p=1, q=1)
     garch_fit = garch_model.fit(disp="off")
+    forecast = garch_fit.forecast(horizon=1)
+    garch_volatility = forecast.variance.iloc[-1, 0] ** 0.5
 
-    # Prediksi volatilitas masa depan
-    forecast = garch_fit.forecast(horizon=30)  # Prediksi untuk 30 hari
-    garch_volatility = forecast.variance[-1:].values[0] ** 0.5  # Volatilitas prediksi (akar varians)
-    sigma = garch_volatility.mean()  # Gunakan rata-rata volatilitas
+    # Harga penutupan terakhir (dari hari sebelumnya, sesuai historis)
+    current_price = df["Close"].iloc[-2]
 
-    st.success("Volatilitas berhasil dihitung menggunakan model GARCH.")
+    harga_penutupan = format_angka_indonesia(current_price)
+    st.write(f"**Harga penutupan {ticker_input} sehari sebelumnya: US${harga_penutupan}**")
 
-    # Simulasi Monte Carlo
-    if "simulation_results" not in st.session_state:
-        simulation_results = {}
-        for days in [3, 7, 30, 90, 365]:  # Periode simulasi
-            sims = np.zeros((days, 100000))
-            for i in range(100000):  # Simulasi 100,000 iterasi
-                rw = np.random.normal(mu, sigma, days)  # Random walk dengan volatilitas dari GARCH
-                sims[:, i] = current_price * np.exp(np.cumsum(rw))  # Hitung harga simulasi
-            simulation_results[days] = sims[-1, :]  # Simpan hasil akhir saja
-        st.session_state.simulation_results = simulation_results
+    for days in [3, 7, 30, 90, 365]:
+        st.subheader(f"Proyeksi Harga Kripto {ticker_input} untuk {days} Hari ke Depan")
+        sims = np.zeros((days, 100000))
+        for i in range(100000):
+            rw = np.random.normal(0, garch_volatility, days)
+            sims[:, i] = current_price * np.exp(np.cumsum(rw))
+        finals = sims[-1, :]
 
-    # Tampilkan hasil simulasi
-    for days, results in st.session_state.simulation_results.items():
-        st.header(f"📅 Proyeksi Harga {ticker_input} untuk {days} Hari ke Depan")
+        bins = np.linspace(finals.min(), finals.max(), 10)
+        counts, _ = np.histogram(finals, bins=bins)
+        probs = counts / len(finals) * 100
+        idx_sorted = np.argsort(probs)[::-1]
 
-        # Statistik hasil simulasi
-        mean_price = np.mean(results)
-        median_price = np.median(results)
-        std_dev = np.std(results)
-        skewness = pd.Series(results).skew()
-        lower_bound = np.percentile(results, 5)
-        upper_bound = np.percentile(results, 95)
-        prob_above_mean = (results > mean_price).mean() * 100
+        table_html = "<table><thead><tr><th>Peluang</th><th>Rentang Harga (US$)</th></tr></thead><tbody>"
 
-        # Distribusi kumulatif untuk tiga rentang harga tertinggi
-        # Ambang batas persentil
-        threshold_95 = np.percentile(results, 95)
-        threshold_97_5 = np.percentile(results, 97.5)
-        threshold_99 = np.percentile(results, 99)
+        total_peluang = 0
+        rentang_bawah = float('inf')
+        rentang_atas = 0
 
-        # Hitung probabilitas kumulatif
-        prob_95 = (results >= threshold_95).mean() * 100
-        prob_97_5 = (results >= threshold_97_5).mean() * 100
-        prob_99 = (results >= threshold_99).mean() * 100
+        for idx, id_sort in enumerate(idx_sorted):
+            if probs[id_sort] == 0:
+                continue
+            low = bins[id_sort]
+            high = bins[id_sort+1] if id_sort+1 < len(bins) else bins[-1]
+            low_fmt = format_angka_indonesia(low)
+            high_fmt = format_angka_indonesia(high)
+            pct = format_persen_indonesia(probs[id_sort])
+            table_html += f"<tr><td>{pct}</td><td>{low_fmt} - {high_fmt}</td></tr>"
 
-        # Akumulasi probabilitas dari tiga rentang tertinggi
-        prob_top_3 = prob_95 + prob_97_5 + prob_99
+            if idx < 3:
+                total_peluang += probs[id_sort]
+                rentang_bawah = min(rentang_bawah, low)
+                rentang_atas = max(rentang_atas, high)
 
-        # Layout menggunakan kolom
-        col1, col2 = st.columns([2, 1])
+        total_peluang_fmt = format_persen_indonesia(total_peluang)
+        rentang_bawah_fmt = format_angka_indonesia(rentang_bawah)
+        rentang_atas_fmt = format_angka_indonesia(rentang_atas)
 
-        with col1:
-            # Visualisasi histogram
-            fig, ax = plt.subplots()
-            ax.hist(results, bins=50, color="blue", alpha=0.7)
-            ax.set_title(f"Distribusi Harga Simulasi ({days} Hari)")
-            ax.set_xlabel("Harga")
-            ax.set_ylabel("Frekuensi")
-            st.pyplot(fig)
+        table_html += f"""
+        <tr class='highlight-green'><td colspan='2'>
+        Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}. Artinya, berdasarkan simulasi, ada kemungkinan besar harga akan bergerak dalam kisaran tersebut dalam {days} hari ke depan.
+        </td></tr>
+        """
 
-        with col2:
-            # Menampilkan statistik
-            st.markdown("### 📊 Statistik Simulasi")
-            st.write(f"**Rata-rata harga:** US${mean_price:,.2f}")
-            st.write(f"**Median harga:** US${median_price:,.2f}")
-            st.write(f"**Standar deviasi:** US${std_dev:,.2f}")
-            st.write(f"**Rentang (5%-95%):** US${lower_bound:,.2f} - US${upper_bound:,.2f}")
-            st.write(f"**Skewness:** {skewness:.2f}")
-            st.write(f"**Peluang di atas rata-rata:** {prob_above_mean:.2f}%")
-            st.write(f"**Peluang di tiga rentang tertinggi:** {prob_top_3:.2f}%")
+        table_html += "</tbody></table>"
 
-        # Kesimpulan pendek untuk media sosial
-        social_summary = (
-            f"Berdasarkan simulasi Monte Carlo dengan GARCH, ada peluang sebesar {prob_top_3:.1f}% "
-            f"{ticker_input.split('-')[0]} bergerak di kisaran US${lower_bound:,.0f} - US${upper_bound:,.0f} "
-            f"dalam {days} hari ke depan, dengan peluang {prob_above_mean:.1f}% berada di atas rata-rata logaritmik "
-            f"US${mean_price:,.0f}."
-        )
-
-        st.markdown("### 📢 Kesimpulan untuk Media Sosial")
-        st.text_area("Salin Kesimpulan", value=social_summary, height=100, key=f"summary_{days}")
+        st.markdown(table_html, unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"Terjadi kesalahan: {e}")
