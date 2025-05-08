@@ -5,10 +5,12 @@ from datetime import datetime
 import requests
 import pytz
 import matplotlib.pyplot as plt
+from arch import arch_model  # Untuk model GARCH
+import time  # Untuk loader
 
 
 # Konfigurasi halaman Streamlit
-st.set_page_config(page_title="Simulasi Monte Carlo Proyeksi Harga Kripto", layout="wide")
+st.set_page_config(page_title="Simulasi Monte Carlo + GARCH untuk Proyeksi Harga Kripto", layout="wide")
 
 # Menampilkan waktu
 wib = pytz.timezone("Asia/Jakarta")
@@ -17,9 +19,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🪙 Simulasi Monte Carlo Proyeksi Harga Kripto")
+st.title("🪙 Simulasi Monte Carlo + GARCH untuk Proyeksi Harga Kripto")
 st.markdown(
-    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan menggunakan metode Monte Carlo._"
+    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan menggunakan metode kombinasi Monte Carlo dan GARCH._"
 )
 
 # Mapping simbol ke ID CoinGecko
@@ -52,7 +54,7 @@ try:
 
     # Hitung log-return
     log_ret = np.log(df["Close"] / df["Close"].shift(1)).dropna()
-    mu, sigma = log_ret.mean(), log_ret.std()
+    mu = log_ret.mean()  # Rata-rata log-return
 
     # Harga penutupan terakhir
     current_price = df["Close"].iloc[-1]
@@ -60,10 +62,20 @@ try:
     # Tampilkan informasi harga terakhir
     st.markdown(f"### **Harga Penutupan Terakhir ({ticker_input}): US${current_price:,.2f}**")
 
-    # Tetapkan random seed
-    if "random_seed" not in st.session_state:
-        st.session_state.random_seed = 42
-    np.random.seed(st.session_state.random_seed)
+    # Loader 3 detik
+    with st.spinner("Menghitung volatilitas dengan model GARCH..."):
+        time.sleep(3)
+
+    # Model GARCH untuk estimasi volatilitas dinamis
+    garch_model = arch_model(log_ret, vol='Garch', p=1, q=1)
+    garch_fit = garch_model.fit(disp="off")
+
+    # Prediksi volatilitas masa depan
+    forecast = garch_fit.forecast(horizon=30)  # Prediksi untuk 30 hari
+    garch_volatility = forecast.variance[-1:].values[0] ** 0.5  # Volatilitas prediksi (akar varians)
+    sigma = garch_volatility.mean()  # Gunakan rata-rata volatilitas
+
+    st.success("Volatilitas berhasil dihitung menggunakan model GARCH.")
 
     # Simulasi Monte Carlo
     if "simulation_results" not in st.session_state:
@@ -71,7 +83,7 @@ try:
         for days in [3, 7, 30, 90, 365]:  # Periode simulasi
             sims = np.zeros((days, 100000))
             for i in range(100000):  # Simulasi 100,000 iterasi
-                rw = np.random.normal(mu, sigma, days)  # Random walk
+                rw = np.random.normal(mu, sigma, days)  # Random walk dengan volatilitas dari GARCH
                 sims[:, i] = current_price * np.exp(np.cumsum(rw))  # Hitung harga simulasi
             simulation_results[days] = sims[-1, :]  # Simpan hasil akhir saja
         st.session_state.simulation_results = simulation_results
@@ -90,9 +102,18 @@ try:
         prob_above_mean = (results > mean_price).mean() * 100
 
         # Distribusi kumulatif untuk tiga rentang harga tertinggi
-        sorted_results = np.sort(results)  # Urutkan hasil simulasi
-        top_3_ranges = sorted_results[-3:]  # Ambil tiga rentang harga tertinggi
-        prob_top_3 = (results >= top_3_ranges[0]).mean() * 100  # Probabilitas kumulatif
+        # Ambang batas persentil
+        threshold_95 = np.percentile(results, 95)
+        threshold_97_5 = np.percentile(results, 97.5)
+        threshold_99 = np.percentile(results, 99)
+
+        # Hitung probabilitas kumulatif
+        prob_95 = (results >= threshold_95).mean() * 100
+        prob_97_5 = (results >= threshold_97_5).mean() * 100
+        prob_99 = (results >= threshold_99).mean() * 100
+
+        # Akumulasi probabilitas dari tiga rentang tertinggi
+        prob_top_3 = prob_95 + prob_97_5 + prob_99
 
         # Layout menggunakan kolom
         col1, col2 = st.columns([2, 1])
@@ -119,7 +140,7 @@ try:
 
         # Kesimpulan pendek untuk media sosial
         social_summary = (
-            f"Berdasarkan simulasi Monte Carlo, ada peluang sebesar {prob_top_3:.1f}% "
+            f"Berdasarkan simulasi Monte Carlo dengan GARCH, ada peluang sebesar {prob_top_3:.1f}% "
             f"{ticker_input.split('-')[0]} bergerak di kisaran US${lower_bound:,.0f} - US${upper_bound:,.0f} "
             f"dalam {days} hari ke depan, dengan peluang {prob_above_mean:.1f}% berada di atas rata-rata logaritmik "
             f"US${mean_price:,.0f}."
