@@ -165,13 +165,28 @@ try:
 
         table_html += f"""
         <tr class='highlight-green'><td colspan='2'>
-        Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}. Artinya, berdasarkan simulasi, ada kemungkinan besar harga akan bergerak dalam kisaran tersebut dalam {days} hari ke depan.
+        Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}.
         </td></tr>
         """
-
         table_html += "</tbody></table>"
-
         st.markdown(table_html, unsafe_allow_html=True)
+
+        # Statistik tambahan untuk kesimpulan
+        mean_log = np.mean(np.log(finals))
+        harga_mean = np.exp(mean_log)
+        chance_above_mean = np.mean(finals > harga_mean) * 100
+
+        # Format angka untuk kesimpulan
+        harga_mean_fmt = format_angka_indonesia(harga_mean)
+        chance_above_mean_fmt = format_persen_indonesia(chance_above_mean)
+
+        # Kesimpulan untuk media sosial
+        kesimpulan = (
+            f"Berdasarkan simulasi Monte Carlo, ada peluang sebesar {total_peluang_fmt} "
+            f"{ticker_input} bergerak di kisaran US${rentang_bawah_fmt}-US${rentang_atas_fmt} "
+            f"dalam {days} hari ke depan, dengan peluang {chance_above_mean_fmt} berada di atas rata-rata logaritmik US${harga_mean_fmt}."
+        )
+        st.text_area(f"Kesimpulan untuk {days} hari (salin untuk media sosial):", kesimpulan, height=100)
 
 except Exception as e:
     st.error(f"Terjadi kesalahan: {e}")
