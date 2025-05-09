@@ -61,35 +61,38 @@ if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
 
         # Validasi kolom
-        if "Date" not in df.columns or "Close" not in df.columns:
-            st.error("File CSV harus memiliki kolom 'Date' dan 'Close'.")
+        if "snapped_at" not in df.columns or "price" not in df.columns:
+            st.error("File CSV harus memiliki kolom 'snapped_at' dan 'price'.")
             st.stop()
 
-        # Validasi format tanggal dan rentang waktu
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        if df["Date"].isnull().any():
-            st.error("Kolom 'Date' harus berisi tanggal yang valid dalam format YYYY-MM-DD.")
-            st.stop()
+        # Konversi kolom 'snapped_at' menjadi format datetime dan ambil hanya tanggalnya
+        df["Date"] = pd.to_datetime(df["snapped_at"]).dt.date
+
+        # Gunakan kolom 'price' sebagai 'Close'
+        df["Close"] = df["price"]
+
+        # Pilih hanya kolom 'Date' dan 'Close'
+        processed_df = df[["Date", "Close"]]
 
         # Filter data untuk memastikan hanya data 5 tahun terakhir
-        today = datetime.now()
+        today = datetime.now().date()
         five_years_ago = today - timedelta(days=5 * 365)
-        df = df[df["Date"] >= five_years_ago]
+        processed_df = processed_df[processed_df["Date"] >= five_years_ago]
 
-        if df.empty:
+        if processed_df.empty:
             st.error("Data historis harus mencakup setidaknya satu tanggal dalam 5 tahun terakhir.")
             st.stop()
 
         # Menampilkan data yang valid
         st.write("### Data Historis yang Valid:")
-        st.dataframe(df)
+        st.dataframe(processed_df)
 
         # Memproses data untuk simulasi Monte Carlo
-        df = df.sort_values("Date")
-        df["Log Return"] = np.log(df["Close"] / df["Close"].shift(1)).dropna()
-        mu, sigma = df["Log Return"].mean(), df["Log Return"].std()
+        processed_df = processed_df.sort_values("Date")
+        processed_df["Log Return"] = np.log(processed_df["Close"] / processed_df["Close"].shift(1)).dropna()
+        mu, sigma = processed_df["Log Return"].mean(), processed_df["Log Return"].std()
 
-        current_price = df["Close"].iloc[-1]
+        current_price = processed_df["Close"].iloc[-1]
         harga_penutupan = format_angka_indonesia(current_price)
         st.write(f"**Harga penutupan terakhir: US${harga_penutupan}**")
 
