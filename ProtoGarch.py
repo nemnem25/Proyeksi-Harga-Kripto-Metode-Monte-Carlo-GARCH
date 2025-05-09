@@ -203,13 +203,13 @@ try:
         harga_mean_fmt = format_angka_indonesia(harga_mean)
         chance_above_mean_fmt = format_persen_indonesia(chance_above_mean)
 
-        # Tambahkan kotak teks untuk media sosial
-        social_media_text = (
-            f"Berdasarkan simulasi Monte Carlo, ada peluang sebesar {total_peluang_fmt} "
-            f"bagi {ticker_input} bergerak antara US${rentang_bawah_fmt} hingga US${rentang_atas_fmt} "
-            f"dalam {days} hari ke depan, dengan peluang {chance_above_mean_fmt} berada di atas rata-rata logaritmik US${harga_mean_fmt}."
-        )
-        st.text_area("Teks untuk Media Sosial", value=social_media_text, height=100)
-
-except Exception as e:
-    st.error(f"Terjadi kesalahan: {e}")
+        # Tambahkan tabel statistik dan kesimpulan
+        stat_table_html = f"""
+<br>
+<table>
+<thead><tr><th>Statistik</th><th>Nilai</th></tr></thead><tbody>
+<tr><td>Mean (Harga Logaritmik)</td><td>{harga_mean_fmt}</td></tr>
+<tr><td>Chance Above Mean</td><td>{chance_above_mean_fmt}</td></tr>
+</tbody></table>
+"""
+        st.markdown(stat_table_html, unsafe_allow_html=True)
