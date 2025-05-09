@@ -1,11 +1,10 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import time
 import requests
-from arch import arch_model
 
 # ————————————————————
 # Utility formatting angka Indonesia 
@@ -34,7 +33,7 @@ def format_persen_indonesia(val) -> str:
 # Konfigurasi halaman Streamlit
 # ————————————————————
 
-st.set_page_config(page_title="Proyeksi Harga Kripto Metode Monte Carlo (GARCH)", layout="centered")
+st.set_page_config(page_title="Proyeksi Harga Kripto Metode Monte Carlo", layout="centered")
 
 # Tampilkan waktu realtime di atas
 wib = pytz.timezone("Asia/Jakarta")
@@ -45,9 +44,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-st.title("Proyeksi Harga Kripto Metode Monte Carlo (GARCH)")
+st.title("Proyeksi Harga Kripto Metode Monte Carlo")
 st.markdown(
-    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan, menggunakan metode Monte Carlo dengan volatilitas dinamis dari model GARCH._",
+    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan, menggunakan metode Monte Carlo. Harga yang digunakan adalah harga penutupan selama 365 hari terakhir._",
     unsafe_allow_html=True
 )
 
@@ -81,19 +80,44 @@ st.markdown("""
 # Daftar ticker dan mapping ke CoinGecko
 # —————————————————————————
 
+ticker_options = [
+    "BTC-USD", "ETH-USD", "BNB-USD", "USDT-USD", "SOL-USD", "XRP-USD", "TON-USD", "DOGE-USD",
+    "ADA-USD", "AVAX-USD", "SHIB-USD", "WETH-USD", "DOT-USD", "TRX-USD", "WBTC-USD", "LINK-USD",
+    "MATIC-USD", "ICP-USD", "LTC-USD", "BCH-USD", "NEAR-USD", "UNI-USD", "PEPE-USD", "LEO-USD",
+    "DAI-USD", "APT-USD", "STETH-USD", "XLM-USD", "OKB-USD", "ETC-USD", "CRO-USD", "FIL-USD",
+    "RNDR-USD", "ATOM-USD", "HBAR-USD", "KAS-USD", "IMX-USD", "TAO-USD", "VET-USD", "MNT-USD",
+    "FET-USD", "LDO-USD", "TONCOIN-USD", "AR-USD", "INJ-USD", "GRT-USD", "BTCB-USD", "USDC-USD",
+    "SUI-USD", "BGB-USD", "XTZ-USD"
+]
+
 coingecko_map = {
-    "BTC-USD":"bitcoin", "ETH-USD":"ethereum", "BNB-USD":"binancecoin", "USDT-USD":"tether", "SOL-USD":"solana"
+    "BTC-USD":"bitcoin", "ETH-USD":"ethereum", "BNB-USD":"binancecoin", "USDT-USD":"tether", "SOL-USD":"solana",
+    "XRP-USD":"ripple", "TON-USD":"toncoin", "DOGE-USD":"dogecoin", "ADA-USD":"cardano", "AVAX-USD":"avalanche-2",
+    "SHIB-USD":"shiba-inu", "WETH-USD":"weth", "DOT-USD":"polkadot", "TRX-USD":"tron", "WBTC-USD":"wrapped-bitcoin",
+    "LINK-USD":"chainlink", "MATIC-USD":"matic-network", "ICP-USD":"internet-computer", "LTC-USD":"litecoin",
+    "BCH-USD":"bitcoin-cash", "NEAR-USD":"near", "UNI-USD":"uniswap", "PEPE-USD":"pepe", "LEO-USD":"leo-token",
+    "DAI-USD":"dai", "APT-USD":"aptos", "STETH-USD":"staked-ether", "XLM-USD":"stellar", "OKB-USD":"okb",
+    "ETC-USD":"ethereum-classic", "CRO-USD":"crypto-com-chain", "FIL-USD":"filecoin", "RNDR-USD":"render-token",
+    "ATOM-USD":"cosmos", "HBAR-USD":"hedera-hashgraph", "KAS-USD":"kaspa", "IMX-USD":"immutable-x",
+    "TAO-USD":"bittensor", "VET-USD":"vechain", "MNT-USD":"mantle", "FET-USD":"fetch-ai", "LDO-USD":"lido-dao",
+    "TONCOIN-USD":"toncoin", "AR-USD":"arweave", "INJ-USD":"injective-protocol", "GRT-USD":"the-graph",
+    "BTCB-USD":"bitcoin-bep2", "USDC-USD":"usd-coin", "SUI-USD":"sui", "BGB-USD":"bitget-token", "XTZ-USD":"tezos"
 }
 
-ticker_input = st.selectbox("Pilih simbol kripto:", list(coingecko_map.keys()))
+# ————————————————————
+# Input pengguna
+# ————————————————————
+
+ticker_input = st.selectbox("Pilih simbol kripto:", ticker_options)
 if not ticker_input:
     st.stop()
 
 # ————————————————————
-# Logika simulasi dengan GARCH
+# Logika simulasi
 # ————————————————————
 
 try:
+    # Logika simulasi dan perhitungan lainnya
     coin_id = coingecko_map[ticker_input]
 
     resp = requests.get(
@@ -111,13 +135,7 @@ try:
         st.stop()
 
     log_ret = np.log(df["Close"]/df["Close"].shift(1)).dropna()
-
-    # Model GARCH untuk menghitung volatilitas
-    st.spinner("Menghitung volatilitas dinamis dengan model GARCH...")
-    garch_model = arch_model(log_ret, vol="Garch", p=1, q=1)
-    garch_fit = garch_model.fit(disp="off")
-    forecast = garch_fit.forecast(horizon=1)
-    garch_volatility = forecast.variance.iloc[-1, 0] ** 0.5
+    mu, sigma = log_ret.mean(), log_ret.std()
 
     # Harga penutupan terakhir (dari hari sebelumnya, sesuai historis)
     current_price = df["Close"].iloc[-2]
@@ -125,11 +143,14 @@ try:
     harga_penutupan = format_angka_indonesia(current_price)
     st.write(f"**Harga penutupan {ticker_input} sehari sebelumnya: US${harga_penutupan}**")
 
+    # **random seed di sini**
+    np.random.seed(42)
+
     for days in [3, 7, 30, 90, 365]:
         st.subheader(f"Proyeksi Harga Kripto {ticker_input} untuk {days} Hari ke Depan")
         sims = np.zeros((days, 100000))
         for i in range(100000):
-            rw = np.random.normal(0, garch_volatility, days)
+            rw = np.random.normal(mu, sigma, days)
             sims[:, i] = current_price * np.exp(np.cumsum(rw))
         finals = sims[-1, :]
 
@@ -168,25 +189,27 @@ try:
         Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}.
         </td></tr>
         """
+
         table_html += "</tbody></table>"
+
         st.markdown(table_html, unsafe_allow_html=True)
 
-        # Statistik tambahan untuk kesimpulan
+        # Hitung statistik tambahan
         mean_log = np.mean(np.log(finals))
         harga_mean = np.exp(mean_log)
         chance_above_mean = np.mean(finals > harga_mean) * 100
 
-        # Format angka untuk kesimpulan
+        # Format angka
         harga_mean_fmt = format_angka_indonesia(harga_mean)
         chance_above_mean_fmt = format_persen_indonesia(chance_above_mean)
 
-        # Kesimpulan untuk media sosial
-        kesimpulan = (
+        # Tambahkan kotak teks untuk media sosial
+        social_media_text = (
             f"Berdasarkan simulasi Monte Carlo, ada peluang sebesar {total_peluang_fmt} "
-            f"{ticker_input} bergerak di kisaran US${rentang_bawah_fmt}-US${rentang_atas_fmt} "
+            f"bagi {ticker_input} bergerak antara US${rentang_bawah_fmt} hingga US${rentang_atas_fmt} "
             f"dalam {days} hari ke depan, dengan peluang {chance_above_mean_fmt} berada di atas rata-rata logaritmik US${harga_mean_fmt}."
         )
-        st.text_area(f"Kesimpulan untuk {days} hari (salin untuk media sosial):", kesimpulan, height=100)
+        st.text_area("Teks untuk Media Sosial", value=social_media_text, height=100)
 
 except Exception as e:
     st.error(f"Terjadi kesalahan: {e}")
