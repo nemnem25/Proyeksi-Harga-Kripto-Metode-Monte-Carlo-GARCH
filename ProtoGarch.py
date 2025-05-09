@@ -1,100 +1,151 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import skew
+import pandas as pd
+from datetime import datetime, timedelta
+import pytz
 
-# Judul Aplikasi
-st.title("📈 Simulasi Monte Carlo untuk Harga Kripto")
-st.markdown("Unggah file CSV yang berisi data historis harga kripto untuk menjalankan simulasi Monte Carlo.")
+# ————————————————————
+# Utility formatting angka Indonesia
+# ————————————————————
 
-# Langkah 1: Unggah file CSV
+def format_angka_indonesia(val) -> str:
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    if abs(val) < 1:
+        s = f"{val:,.8f}"
+    else:
+        s = f"{val:,.0f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+def format_persen_indonesia(val) -> str:
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return str(val)
+    s = f"{val:.1f}"
+    return s.replace(".", ",") + "%"
+
+# ————————————————————
+# Konfigurasi halaman Streamlit
+# ————————————————————
+
+st.set_page_config(page_title="Proyeksi Harga Kripto Metode Monte Carlo", layout="centered")
+
+# Tampilkan waktu realtime di atas
+wib = pytz.timezone("Asia/Jakarta")
+waktu_sekarang = datetime.now(wib).strftime("%A, %d %B %Y")
+st.markdown(f"""
+<div style='background-color: #5B5B5B; padding: 8px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 16px;'>
+⏰ {waktu_sekarang}
+</div>
+""", unsafe_allow_html=True)
+
+st.title("Proyeksi Harga Kripto Metode Monte Carlo")
+st.markdown(
+    "_Simulasi berbasis data historis untuk memproyeksikan harga kripto selama beberapa hari ke depan, menggunakan metode Monte Carlo dengan Geometric Brownian Motion._",
+    unsafe_allow_html=True
+)
+
+# ————————————————————
+# Upload file CSV oleh pengguna
+# ————————————————————
+
+st.subheader("Unggah Data Historis Harga Kripto")
 uploaded_file = st.file_uploader("Unggah file CSV Anda di sini:", type=["csv"])
 
 if uploaded_file is not None:
     try:
         # Membaca file CSV
-        data = pd.read_csv(uploaded_file)
-        st.write("### Data Historis yang Diunggah:")
-        st.dataframe(data)
+        df = pd.read_csv(uploaded_file)
 
-        # Validasi kolom yang diperlukan
-        if "snapped_at" not in data.columns or "price" not in data.columns:
-            st.error("File CSV harus memiliki kolom 'snapped_at' dan 'price'.")
-        else:
-            # Memproses data
-            data["Date"] = pd.to_datetime(data["snapped_at"])
-            data = data.sort_values("Date")
-            data["Log Return"] = np.log(data["price"] / data["price"].shift(1))
-            mu = data["Log Return"].mean()
-            sigma = data["Log Return"].std()
+        # Validasi kolom
+        if "Date" not in df.columns or "Close" not in df.columns:
+            st.error("File CSV harus memiliki kolom 'Date' dan 'Close'.")
+            st.stop()
 
-            st.write("### Statistik Log Return:")
-            st.write(f"Mean (μ): {mu:.6f}")
-            st.write(f"Standar Deviasi (σ): {sigma:.6f}")
+        # Validasi format tanggal dan rentang waktu
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        if df["Date"].isnull().any():
+            st.error("Kolom 'Date' harus berisi tanggal yang valid dalam format YYYY-MM-DD.")
+            st.stop()
 
-            # Parameter simulasi
-            days_to_simulate = st.slider("Pilih jumlah hari simulasi:", min_value=1, max_value=365, value=3)
-            simulations = st.slider("Pilih jumlah simulasi:", min_value=100, max_value=10000, value=1000, step=100)
+        # Filter data untuk memastikan hanya data 5 tahun terakhir
+        today = datetime.now()
+        five_years_ago = today - timedelta(days=5 * 365)
+        df = df[df["Date"] >= five_years_ago]
 
-            # Jalankan simulasi Monte Carlo
-            if st.button("Mulai Simulasi Monte Carlo"):
-                st.write("Simulasi sedang berjalan...")
-                last_price = data["price"].iloc[-1]
-                drift = (mu - 0.5 * sigma**2) * np.arange(days_to_simulate).reshape(-1, 1)
-                random_shocks = sigma * np.random.normal(0, 1, (days_to_simulate, simulations))
-                price_paths = last_price * np.exp(drift + np.cumsum(random_shocks, axis=0))
+        if df.empty:
+            st.error("Data historis harus mencakup setidaknya satu tanggal dalam 5 tahun terakhir.")
+            st.stop()
 
-                # Statistik dan distribusi hasil simulasi
-                final_prices = price_paths[-1]
-                mean_price = np.mean(final_prices)
-                stddev_price = np.std(final_prices)
-                skewness = skew(final_prices)
+        # Menampilkan data yang valid
+        st.write("### Data Historis yang Valid:")
+        st.dataframe(df)
 
-                # Tentukan rentang harga
-                bins = np.histogram_bin_edges(final_prices, bins='auto')
-                histogram, bin_edges = np.histogram(final_prices, bins=bins)
-                probabilities = histogram / sum(histogram) * 100
+        # Memproses data untuk simulasi Monte Carlo
+        df = df.sort_values("Date")
+        df["Log Return"] = np.log(df["Close"] / df["Close"].shift(1)).dropna()
+        mu, sigma = df["Log Return"].mean(), df["Log Return"].std()
 
-                # Buat tabel peluang
-                ranges = [f"{bin_edges[i]:,.0f} - {bin_edges[i+1]:,.0f}" for i in range(len(bin_edges)-1)]
-                probability_table = pd.DataFrame({
-                    "Peluang (%)": probabilities,
-                    "Rentang Harga (US$)": ranges
-                }).sort_values("Peluang (%)", ascending=False)
+        current_price = df["Close"].iloc[-1]
+        harga_penutupan = format_angka_indonesia(current_price)
+        st.write(f"**Harga penutupan terakhir: US${harga_penutupan}**")
 
-                st.write("### Tabel Peluang dan Rentang Harga")
-                st.dataframe(probability_table)
+        # Simulasi Monte Carlo menggunakan Geometric Brownian Motion (GBM)
+        np.random.seed(42)
+        for days in [3, 7, 30, 90, 365]:
+            st.subheader(f"Proyeksi Harga Kripto untuk {days} Hari ke Depan")
+            sims = np.zeros((days, 100000))
+            for i in range(100000):
+                dt = 1  # Unit waktu dalam hari
+                drift = (mu - 0.5 * sigma**2) * dt
+                shocks = sigma * np.random.normal(0, 1, days)
+                sims[:, i] = current_price * np.exp(np.cumsum(drift + shocks))
+            finals = sims[-1, :]
 
-                # Peluang kumulatif untuk tiga rentang harga tertinggi
-                top_3_probabilities = probability_table.iloc[:3]["Peluang (%)"].sum()
-                top_3_range = probability_table.iloc[:3]["Rentang Harga (US$)"].values
-                st.write(f"Peluang kumulatif dari tiga rentang harga tertinggi mencapai **{top_3_probabilities:.1f}%**, dengan kisaran harga **{', '.join(top_3_range)}**.")
+            bins = np.linspace(finals.min(), finals.max(), 10)
+            counts, _ = np.histogram(finals, bins=bins)
+            probs = counts / len(finals) * 100
+            idx_sorted = np.argsort(probs)[::-1]
 
-                # Kesimpulan
-                st.write("### Kesimpulan:")
-                st.markdown(f"""
-                - **Harga Rata-rata (Logaritmik)**: US${mean_price:,.0f}
-                - **Standard Deviation**: US${stddev_price:,.0f}
-                - **Skewness**: {skewness:.6f}
-                - **Kemungkinan Harga di Atas Rata-rata**: 50.0%
-                """)
+            table_html = "<table><thead><tr><th>Peluang</th><th>Rentang Harga (US$)</th></tr></thead><tbody>"
 
-                # Histogram distribusi harga
-                fig, ax = plt.subplots(figsize=(10, 6))
-                ax.hist(final_prices, bins=20, color='blue', alpha=0.7)
-                ax.set_title("Distribusi Harga Akhir (Monte Carlo)")
-                ax.set_xlabel("Harga (US$)")
-                ax.set_ylabel("Frekuensi")
-                st.pyplot(fig)
+            total_peluang = 0
+            rentang_bawah = float('inf')
+            rentang_atas = 0
 
-                # Teks untuk Media Sosial
-                st.write("### Teks untuk Media Sosial:")
-                social_text = f"""
-                Berdasarkan simulasi Monte Carlo, ada peluang sebesar **{top_3_probabilities:.1f}%** bagi BTC-USD bergerak antara **{', '.join(top_3_range)}** dalam {days_to_simulate} hari ke depan, dengan peluang **50,0%** berada di atas rata-rata logaritmik **US${mean_price:,.0f}**.
-                """
-                st.markdown(social_text)
+            for idx, id_sort in enumerate(idx_sorted):
+                if probs[id_sort] == 0:
+                    continue
+                low = bins[id_sort]
+                high = bins[id_sort+1] if id_sort+1 < len(bins) else bins[-1]
+                low_fmt = format_angka_indonesia(low)
+                high_fmt = format_angka_indonesia(high)
+                pct = format_persen_indonesia(probs[id_sort])
+                table_html += f"<tr><td>{pct}</td><td>{low_fmt} - {high_fmt}</td></tr>"
+
+                if idx < 3:
+                    total_peluang += probs[id_sort]
+                    rentang_bawah = min(rentang_bawah, low)
+                    rentang_atas = max(rentang_atas, high)
+
+            total_peluang_fmt = format_persen_indonesia(total_peluang)
+            rentang_bawah_fmt = format_angka_indonesia(rentang_bawah)
+            rentang_atas_fmt = format_angka_indonesia(rentang_atas)
+
+            table_html += f"""
+            <tr class='highlight-green'><td colspan='2'>
+            Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}.
+            </td></tr>
+            """
+
+            table_html += "</tbody></table>"
+
+            st.markdown(table_html, unsafe_allow_html=True)
+
     except Exception as e:
-        st.error(f"Terjadi kesalahan saat memproses file: {e}")
+        st.error(f"Terjadi kesalahan: {e}")
 else:
     st.info("Silakan unggah file CSV untuk memulai.")
