@@ -100,8 +100,8 @@ if uploaded_file is not None:
         np.random.seed(42)
         for days in [3, 7, 30, 90, 365]:
             st.subheader(f"Proyeksi Harga Kripto untuk {days} Hari ke Depan")
-            sims = np.zeros((days, 1000000))
-            for i in range(1000000):
+            sims = np.zeros((days, 100000))
+            for i in range(100000):
                 dt = 1  # Unit waktu dalam hari
                 drift = (mu - 0.5 * sigma**2) * dt
                 shocks = sigma * np.random.normal(0, 1, days)
