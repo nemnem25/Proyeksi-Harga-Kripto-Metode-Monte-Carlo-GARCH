@@ -143,11 +143,6 @@ if uploaded_file is not None:
             Peluang kumulatif dari tiga rentang harga tertinggi mencapai {total_peluang_fmt}, dengan kisaran harga US${rentang_bawah_fmt} hingga US${rentang_atas_fmt}.
             </td></tr>
             """
-
-            table_html += "</tbody></table>"
-
-            st.markdown(table_html, unsafe_allow_html=True)
-
             # Hitung harga mean dari data historis
             harga_mean = processed_df["Close"].mean()
             harga_mean_fmt = format_angka_indonesia(harga_mean)
@@ -163,6 +158,9 @@ if uploaded_file is not None:
             st.write(f"**Harga Rata-rata Historis:** US${harga_mean_fmt}")
             st.write(f"**Peluang Harga di Atas Mean:** {peluang_di_atas_mean_fmt}")
             st.write(f"**Peluang Harga di Bawah Mean:** {peluang_di_bawah_mean_fmt}")
+            table_html += "</tbody></table>"
+
+            st.markdown(table_html, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"Terjadi kesalahan: {e}")
