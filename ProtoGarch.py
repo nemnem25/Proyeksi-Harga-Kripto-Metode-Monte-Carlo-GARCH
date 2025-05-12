@@ -159,10 +159,10 @@ if uploaded_file is not None:
             peluang_di_atas_mean_fmt = format_persen_indonesia(peluang_di_atas_mean)
             peluang_di_bawah_mean_fmt = format_persen_indonesia(peluang_di_bawah_mean)
 
-# Tampilkan informasi di Streamlit
-st.write(f"**Harga Rata-rata Historis:** US${harga_mean_fmt}")
-st.write(f"**Peluang Harga di Atas Mean:** {peluang_di_atas_mean_fmt}")
-st.write(f"**Peluang Harga di Bawah Mean:** {peluang_di_bawah_mean_fmt}")
+            # Tampilkan informasi di Streamlit
+            st.write(f"**Harga Rata-rata Historis:** US${harga_mean_fmt}")
+            st.write(f"**Peluang Harga di Atas Mean:** {peluang_di_atas_mean_fmt}")
+            st.write(f"**Peluang Harga di Bawah Mean:** {peluang_di_bawah_mean_fmt}")
 
     except Exception as e:
         st.error(f"Terjadi kesalahan: {e}")
