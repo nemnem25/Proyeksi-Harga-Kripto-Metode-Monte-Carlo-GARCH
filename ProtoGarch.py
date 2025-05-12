@@ -148,16 +148,16 @@ if uploaded_file is not None:
 
             st.markdown(table_html, unsafe_allow_html=True)
 
-    # Hitung harga mean dari data historis
-harga_mean = processed_df["Close"].mean()
-harga_mean_fmt = format_angka_indonesia(harga_mean)
+            # Hitung harga mean dari data historis
+            harga_mean = processed_df["Close"].mean()
+            harga_mean_fmt = format_angka_indonesia(harga_mean)
 
-# Hitung persentase peluang harga berada di atas atau di bawah mean
-peluang_di_atas_mean = np.sum(finals > harga_mean) / len(finals) * 100
-peluang_di_bawah_mean = np.sum(finals < harga_mean) / len(finals) * 100
+            # Hitung persentase peluang harga berada di atas atau di bawah mean
+            peluang_di_atas_mean = np.sum(finals > harga_mean) / len(finals) * 100
+            peluang_di_bawah_mean = np.sum(finals < harga_mean) / len(finals) * 100
 
-peluang_di_atas_mean_fmt = format_persen_indonesia(peluang_di_atas_mean)
-peluang_di_bawah_mean_fmt = format_persen_indonesia(peluang_di_bawah_mean)
+            peluang_di_atas_mean_fmt = format_persen_indonesia(peluang_di_atas_mean)
+            peluang_di_bawah_mean_fmt = format_persen_indonesia(peluang_di_bawah_mean)
 
 # Tampilkan informasi di Streamlit
 st.write(f"**Harga Rata-rata Historis:** US${harga_mean_fmt}")
